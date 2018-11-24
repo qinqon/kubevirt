@@ -22,6 +22,7 @@ package virt_api
 import (
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"os"
 
 	. "github.com/onsi/ginkgo"
@@ -77,7 +78,6 @@ var _ = Describe("Virt-api", func() {
 
 			err := app.getSelfSignedCert()
 			Expect(err).ToNot(HaveOccurred())
-
 			Expect(len(app.signingCertBytes)).ToNot(Equal(0))
 			Expect(len(app.certBytes)).ToNot(Equal(0))
 			Expect(len(app.keyBytes)).ToNot(Equal(0))
@@ -302,6 +302,15 @@ var _ = Describe("Virt-api", func() {
 				),
 			)
 			app.createSubresourceApiservice()
+			close(done)
+		}, 5)
+
+		It("should return unauthorized error if not allowed", func(done Done) {
+			app.Compose()
+			ts := httptest.NewServer(nil)
+			resp, err := http.Get(ts.URL + "/apis/subresources.kubevirt.io/v1alpha2/namespaces/default/virtualmachineinstances/vm-01/test")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
 			close(done)
 		}, 5)
 	})
