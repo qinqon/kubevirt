@@ -20,11 +20,13 @@
 package virt_api
 
 import (
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
 
+	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
@@ -46,6 +48,8 @@ const namespaceKubevirt = "kubevirt"
 var _ = Describe("Virt-api", func() {
 	var tmpDir string
 	var server *ghttp.Server
+	var ctrl *gomock.Controller
+	var authorizorMock *rest.MockVirtApiAuthorizor
 	subresourceAggregatedApiName := v1.SubresourceGroupVersion.Version + "." + v1.SubresourceGroupName
 
 	log.Log.SetIOWriter(GinkgoWriter)
@@ -61,6 +65,8 @@ var _ = Describe("Virt-api", func() {
 		Expect(err).ToNot(HaveOccurred())
 		app.authorizor, err = rest.NewAuthorizorFromConfig(config)
 		Expect(err).ToNot(HaveOccurred())
+		ctrl = gomock.NewController(GinkgoT())
+		authorizorMock = rest.NewMockVirtApiAuthorizor(ctrl)
 	})
 
 	Context("Virt api server", func() {
@@ -305,10 +311,29 @@ var _ = Describe("Virt-api", func() {
 			close(done)
 		}, 5)
 
-		It("should return unauthorized error if not allowed", func(done Done) {
+		It("should return internal error on authorizor error", func(done Done) {
+			app.authorizor = authorizorMock
+			authorizorMock.EXPECT().
+				Authorize(gomock.Not(gomock.Nil())).
+				Return(false, "", errors.New("fake error at authorizor")).
+				AnyTimes()
 			app.Compose()
 			ts := httptest.NewServer(nil)
-			resp, err := http.Get(ts.URL + "/apis/subresources.kubevirt.io/v1alpha2/namespaces/default/virtualmachineinstances/vm-01/test")
+			resp, err := http.Get(ts.URL)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+			close(done)
+		}, 5)
+
+		It("should return unauthorized error if not allowed", func(done Done) {
+			app.authorizor = authorizorMock
+			authorizorMock.EXPECT().
+				Authorize(gomock.Not(gomock.Nil())).
+				Return(false, "", nil).
+				AnyTimes()
+			app.Compose()
+			ts := httptest.NewServer(nil)
+			resp, err := http.Get(ts.URL)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
 			close(done)
