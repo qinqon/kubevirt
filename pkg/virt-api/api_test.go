@@ -26,7 +26,6 @@ import (
 	"net/http/httptest"
 	"os"
 
-	restful "github.com/emicklei/go-restful"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -369,6 +368,34 @@ var _ = Describe("Virt-api", func() {
 			resp, err := http.Get(backend.URL + "/apis/subresources.kubevirt.io/v1alpha2/namespaces/default/virtualmachineinstances/vm1/test")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			close(done)
+		}, 5)
+
+		It("should have a version endpoint", func(done Done) {
+			app.authorizor = authorizorMock
+			authorizorMock.EXPECT().
+				Authorize(gomock.Not(gomock.Nil())).
+				Return(true, "", nil).
+				AnyTimes()
+			app.Compose()
+			resp, err := http.Get(backend.URL + "/apis/subresources.kubevirt.io/v1alpha2/version")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			// TODO: Check version
+			close(done)
+		}, 5)
+
+		It("should have an empty endpoint", func(done Done) {
+			app.authorizor = authorizorMock
+			authorizorMock.EXPECT().
+				Authorize(gomock.Not(gomock.Nil())).
+				Return(true, "", nil).
+				AnyTimes()
+			app.Compose()
+			resp, err := http.Get(backend.URL + "/apis/subresources.kubevirt.io/v1alpha2/")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			// TODO: Check list
 			close(done)
 		}, 5)
 
