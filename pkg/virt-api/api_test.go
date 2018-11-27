@@ -26,6 +26,7 @@ import (
 	"net/http/httptest"
 	"os"
 
+	restful "github.com/emicklei/go-restful"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -67,6 +68,12 @@ var _ = Describe("Virt-api", func() {
 		Expect(err).ToNot(HaveOccurred())
 		ctrl = gomock.NewController(GinkgoT())
 		authorizorMock = rest.NewMockVirtApiAuthorizor(ctrl)
+
+		// Reset go-restful
+		http.DefaultServeMux = new(http.ServeMux)
+		restful.DefaultContainer = restful.NewContainer()
+		restful.DefaultContainer.ServeMux = http.DefaultServeMux
+
 	})
 
 	Context("Virt api server", func() {
