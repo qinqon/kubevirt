@@ -49,6 +49,7 @@ const namespaceKubevirt = "kubevirt"
 var _ = Describe("Virt-api", func() {
 	var tmpDir string
 	var server *ghttp.Server
+	var backend *httptest.Server
 	var ctrl *gomock.Controller
 	var authorizorMock *rest.MockVirtApiAuthorizor
 	subresourceAggregatedApiName := v1.SubresourceGroupVersion.Version + "." + v1.SubresourceGroupName
@@ -58,6 +59,7 @@ var _ = Describe("Virt-api", func() {
 	app := virtAPIApp{namespace: namespaceKubevirt}
 	BeforeEach(func() {
 		server = ghttp.NewServer()
+		backend = httptest.NewServer(nil)
 		tmpDir, err := ioutil.TempDir("", "api_tmp_dir")
 		Expect(err).ToNot(HaveOccurred())
 		app.virtCli, _ = kubecli.GetKubevirtClientFromFlags(server.URL(), "")
@@ -325,8 +327,7 @@ var _ = Describe("Virt-api", func() {
 				Return(false, "", errors.New("fake error at authorizor")).
 				AnyTimes()
 			app.Compose()
-			ts := httptest.NewServer(nil)
-			resp, err := http.Get(ts.URL)
+			resp, err := http.Get(backend.URL)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
 			close(done)
@@ -339,12 +340,25 @@ var _ = Describe("Virt-api", func() {
 				Return(false, "", nil).
 				AnyTimes()
 			app.Compose()
-			ts := httptest.NewServer(nil)
-			resp, err := http.Get(ts.URL)
+			resp, err := http.Get(backend.URL)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
 			close(done)
 		}, 5)
+
+		It("should not found if endpoint does not exists", func(done Done) {
+			app.authorizor = authorizorMock
+			authorizorMock.EXPECT().
+				Authorize(gomock.Not(gomock.Nil())).
+				Return(true, "", nil).
+				AnyTimes()
+			app.Compose()
+			resp, err := http.Get(backend.URL)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+			close(done)
+		}, 5)
+
 	})
 
 	AfterEach(func() {
