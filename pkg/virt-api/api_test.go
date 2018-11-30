@@ -26,6 +26,7 @@ import (
 	"net/http/httptest"
 	"os"
 
+	restful "github.com/emicklei/go-restful"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -385,7 +386,7 @@ var _ = Describe("Virt-api", func() {
 			close(done)
 		}, 5)
 
-		It("should have an empty endpoint", func(done Done) {
+		It("should return info on the api group version", func(done Done) {
 			app.authorizor = authorizorMock
 			authorizorMock.EXPECT().
 				Authorize(gomock.Not(gomock.Nil())).
@@ -393,6 +394,34 @@ var _ = Describe("Virt-api", func() {
 				AnyTimes()
 			app.Compose()
 			resp, err := http.Get(backend.URL + "/apis/subresources.kubevirt.io/v1alpha2/")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			// TODO: Check list
+			close(done)
+		}, 5)
+
+		It("should return info on the API group", func(done Done) {
+			app.authorizor = authorizorMock
+			authorizorMock.EXPECT().
+				Authorize(gomock.Not(gomock.Nil())).
+				Return(true, "", nil).
+				AnyTimes()
+			app.Compose()
+			resp, err := http.Get(backend.URL + "/apis/subresources.kubevirt.io/")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			// TODO: Check list
+			close(done)
+		}, 5)
+
+		It("should return API grou list on /apis", func(done Done) {
+			app.authorizor = authorizorMock
+			authorizorMock.EXPECT().
+				Authorize(gomock.Not(gomock.Nil())).
+				Return(true, "", nil).
+				AnyTimes()
+			app.Compose()
+			resp, err := http.Get(backend.URL + "/apis/")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			// TODO: Check list
