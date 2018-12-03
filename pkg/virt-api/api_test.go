@@ -31,6 +31,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
+	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
@@ -414,7 +415,7 @@ var _ = Describe("Virt-api", func() {
 			close(done)
 		}, 5)
 
-		It("should return API grou list on /apis", func(done Done) {
+		It("should return API group list on /apis", func(done Done) {
 			app.authorizor = authorizorMock
 			authorizorMock.EXPECT().
 				Authorize(gomock.Not(gomock.Nil())).
@@ -428,9 +429,103 @@ var _ = Describe("Virt-api", func() {
 			close(done)
 		}, 5)
 
+		It("should register validating webhook if not found", func(done Done) {
+			expectedWebhooks := &admissionregistrationv1beta1.ValidatingWebhookConfiguration{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ValidatingWebhookConfiguration",
+					APIVersion: "admissionregistration.k8s.io/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: virtWebhookValidator,
+					Labels: map[string]string{
+						v1.AppLabel: virtWebhookValidator,
+					},
+				},
+				Webhooks: app.validatingWebhooks(),
+			}
+
+			server.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations/virt-api-validator"),
+					ghttp.RespondWithJSONEncoded(http.StatusNotFound, nil),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("POST", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations"),
+					ghttp.VerifyJSONRepresenting(expectedWebhooks),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, nil),
+				),
+			)
+
+			err := app.createValidatingWebhook()
+			Expect(err).ToNot(HaveOccurred())
+			close(done)
+		}, 5)
+
+		It("should update validating webhook if found", func(done Done) {
+			expectedWebhooks := &admissionregistrationv1beta1.ValidatingWebhookConfiguration{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ValidatingWebhookConfiguration",
+					APIVersion: "admissionregistration.k8s.io/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: virtWebhookValidator,
+					Labels: map[string]string{
+						v1.AppLabel: virtWebhookValidator,
+					},
+				},
+				Webhooks: app.validatingWebhooks(),
+			}
+
+			server.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations/virt-api-validator"),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, expectedWebhooks),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("PUT", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations/virt-api-validator"),
+					ghttp.VerifyJSONRepresenting(expectedWebhooks),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, nil),
+				),
+			)
+
+			err := app.createValidatingWebhook()
+			Expect(err).ToNot(HaveOccurred())
+			close(done)
+		}, 5)
+
+		It("should fail if service at different namespace", func(done Done) {
+			expectedWebhooks := &admissionregistrationv1beta1.ValidatingWebhookConfiguration{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ValidatingWebhookConfiguration",
+					APIVersion: "admissionregistration.k8s.io/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: virtWebhookValidator,
+					Labels: map[string]string{
+						v1.AppLabel: virtWebhookValidator,
+					},
+				},
+				Webhooks: app.validatingWebhooks(),
+			}
+
+			expectedWebhooks.Webhooks[0].ClientConfig.Service.Namespace = "WrongNamespace"
+
+			server.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations/virt-api-validator"),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, expectedWebhooks),
+				),
+			)
+
+			err := app.createValidatingWebhook()
+			Expect(err).To(HaveOccurred())
+			close(done)
+		}, 5)
+
 	})
 
 	AfterEach(func() {
+		backend.Close()
 		server.Close()
 		os.RemoveAll(tmpDir)
 	})

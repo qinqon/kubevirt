@@ -453,8 +453,8 @@ func (app *virtAPIApp) createWebhook() error {
 	return nil
 }
 
-func (app *virtAPIApp) createValidatingWebhook() error {
-	registerWebhook := false
+func (app *virtAPIApp) validatingWebhooks() []admissionregistrationv1beta1.Webhook {
+
 	vmiPathCreate := vmiCreateValidatePath
 	vmiPathUpdate := vmiUpdateValidatePath
 	vmPath := vmValidatePath
@@ -462,16 +462,6 @@ func (app *virtAPIApp) createValidatingWebhook() error {
 	vmipresetPath := vmipresetValidatePath
 	migrationCreatePath := migrationCreateValidatePath
 	migrationUpdatePath := migrationUpdateValidatePath
-
-	webhookRegistration, err := app.virtCli.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations().Get(virtWebhookValidator, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			registerWebhook = true
-		} else {
-			return err
-		}
-	}
-
 	failurePolicy := admissionregistrationv1beta1.Fail
 
 	webHooks := []admissionregistrationv1beta1.Webhook{
@@ -634,6 +624,22 @@ func (app *virtAPIApp) createValidatingWebhook() error {
 		},
 	}
 
+	return webHooks
+}
+
+func (app *virtAPIApp) createValidatingWebhook() error {
+	registerWebhook := false
+	webhookRegistration, err := app.virtCli.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations().Get(virtWebhookValidator, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			fmt.Println(err)
+			registerWebhook = true
+		} else {
+			return err
+		}
+	}
+	webHooks := app.validatingWebhooks()
+
 	if registerWebhook {
 		_, err := app.virtCli.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations().Create(&admissionregistrationv1beta1.ValidatingWebhookConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
@@ -648,7 +654,6 @@ func (app *virtAPIApp) createValidatingWebhook() error {
 			return err
 		}
 	} else {
-
 		for _, webhook := range webhookRegistration.Webhooks {
 			if webhook.ClientConfig.Service != nil && webhook.ClientConfig.Service.Namespace != app.namespace {
 				return fmt.Errorf("ValidatingAdmissionWebhook [%s] is already registered using services endpoints in a different namespace. Existing webhook registration must be deleted before virt-api can proceed.", virtWebhookValidator)
