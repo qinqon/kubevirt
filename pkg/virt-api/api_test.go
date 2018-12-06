@@ -53,6 +53,8 @@ var _ = Describe("Virt-api", func() {
 	var backend *httptest.Server
 	var ctrl *gomock.Controller
 	var authorizorMock *rest.MockVirtApiAuthorizor
+	var expectedValidatingWebhooks *admissionregistrationv1beta1.ValidatingWebhookConfiguration
+	var expectedMutatingWebhooks *admissionregistrationv1beta1.MutatingWebhookConfiguration
 	subresourceAggregatedApiName := v1.SubresourceGroupVersion.Version + "." + v1.SubresourceGroupName
 
 	log.Log.SetIOWriter(GinkgoWriter)
@@ -76,6 +78,34 @@ var _ = Describe("Virt-api", func() {
 		http.DefaultServeMux = new(http.ServeMux)
 		restful.DefaultContainer = restful.NewContainer()
 		restful.DefaultContainer.ServeMux = http.DefaultServeMux
+
+		expectedMutatingWebhooks = &admissionregistrationv1beta1.MutatingWebhookConfiguration{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "MutatingWebhookConfiguration",
+				APIVersion: "admissionregistration.k8s.io/v1beta1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: virtWebhookMutator,
+				Labels: map[string]string{
+					v1.AppLabel: virtWebhookMutator,
+				},
+			},
+			Webhooks: app.mutatingWebhooks(),
+		}
+
+		expectedValidatingWebhooks = &admissionregistrationv1beta1.ValidatingWebhookConfiguration{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ValidatingWebhookConfiguration",
+				APIVersion: "admissionregistration.k8s.io/v1beta1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: virtWebhookValidator,
+				Labels: map[string]string{
+					v1.AppLabel: virtWebhookValidator,
+				},
+			},
+			Webhooks: app.validatingWebhooks(),
+		}
 
 	})
 
@@ -430,20 +460,6 @@ var _ = Describe("Virt-api", func() {
 		}, 5)
 
 		It("should register validating webhook if not found", func(done Done) {
-			expectedWebhooks := &admissionregistrationv1beta1.ValidatingWebhookConfiguration{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "ValidatingWebhookConfiguration",
-					APIVersion: "admissionregistration.k8s.io/v1beta1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: virtWebhookValidator,
-					Labels: map[string]string{
-						v1.AppLabel: virtWebhookValidator,
-					},
-				},
-				Webhooks: app.validatingWebhooks(),
-			}
-
 			server.AppendHandlers(
 				ghttp.CombineHandlers(
 					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations/virt-api-validator"),
@@ -451,7 +467,7 @@ var _ = Describe("Virt-api", func() {
 				),
 				ghttp.CombineHandlers(
 					ghttp.VerifyRequest("POST", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations"),
-					ghttp.VerifyJSONRepresenting(expectedWebhooks),
+					ghttp.VerifyJSONRepresenting(expectedValidatingWebhooks),
 					ghttp.RespondWithJSONEncoded(http.StatusOK, nil),
 				),
 			)
@@ -462,28 +478,14 @@ var _ = Describe("Virt-api", func() {
 		}, 5)
 
 		It("should update validating webhook if found", func(done Done) {
-			expectedWebhooks := &admissionregistrationv1beta1.ValidatingWebhookConfiguration{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "ValidatingWebhookConfiguration",
-					APIVersion: "admissionregistration.k8s.io/v1beta1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: virtWebhookValidator,
-					Labels: map[string]string{
-						v1.AppLabel: virtWebhookValidator,
-					},
-				},
-				Webhooks: app.validatingWebhooks(),
-			}
-
 			server.AppendHandlers(
 				ghttp.CombineHandlers(
 					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations/virt-api-validator"),
-					ghttp.RespondWithJSONEncoded(http.StatusOK, expectedWebhooks),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, expectedValidatingWebhooks),
 				),
 				ghttp.CombineHandlers(
 					ghttp.VerifyRequest("PUT", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations/virt-api-validator"),
-					ghttp.VerifyJSONRepresenting(expectedWebhooks),
+					ghttp.VerifyJSONRepresenting(expectedValidatingWebhooks),
 					ghttp.RespondWithJSONEncoded(http.StatusOK, nil),
 				),
 			)
@@ -493,31 +495,69 @@ var _ = Describe("Virt-api", func() {
 			close(done)
 		}, 5)
 
-		It("should fail if service at different namespace", func(done Done) {
-			expectedWebhooks := &admissionregistrationv1beta1.ValidatingWebhookConfiguration{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "ValidatingWebhookConfiguration",
-					APIVersion: "admissionregistration.k8s.io/v1beta1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: virtWebhookValidator,
-					Labels: map[string]string{
-						v1.AppLabel: virtWebhookValidator,
-					},
-				},
-				Webhooks: app.validatingWebhooks(),
-			}
-
-			expectedWebhooks.Webhooks[0].ClientConfig.Service.Namespace = "WrongNamespace"
+		It("should fail if validating webhook service at different namespace", func(done Done) {
+			expectedValidatingWebhooks.Webhooks[0].ClientConfig.Service.Namespace = "WrongNamespace"
 
 			server.AppendHandlers(
 				ghttp.CombineHandlers(
 					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/validatingwebhookconfigurations/virt-api-validator"),
-					ghttp.RespondWithJSONEncoded(http.StatusOK, expectedWebhooks),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, expectedValidatingWebhooks),
 				),
 			)
 
 			err := app.createValidatingWebhook()
+			Expect(err).To(HaveOccurred())
+			close(done)
+		}, 5)
+
+		It("should register mutating webhook if not found", func(done Done) {
+			server.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/mutatingwebhookconfigurations/virt-api-mutator"),
+					ghttp.RespondWithJSONEncoded(http.StatusNotFound, nil),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("POST", "/apis/admissionregistration.k8s.io/v1beta1/mutatingwebhookconfigurations"),
+					ghttp.VerifyJSONRepresenting(expectedMutatingWebhooks),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, nil),
+				),
+			)
+
+			err := app.createMutatingWebhook()
+			Expect(err).ToNot(HaveOccurred())
+			close(done)
+		}, 5)
+
+		It("should update mutating webhook if found", func(done Done) {
+			server.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/mutatingwebhookconfigurations/virt-api-mutator"),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, expectedMutatingWebhooks),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("PUT", "/apis/admissionregistration.k8s.io/v1beta1/mutatingwebhookconfigurations/virt-api-mutator"),
+					ghttp.VerifyJSONRepresenting(expectedMutatingWebhooks),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, nil),
+				),
+			)
+
+			err := app.createMutatingWebhook()
+			Expect(err).ToNot(HaveOccurred())
+			close(done)
+		}, 5)
+
+		It("should fail if validating webhook service at different namespace", func(done Done) {
+
+			expectedMutatingWebhooks.Webhooks[0].ClientConfig.Service.Namespace = "WrongNamespace"
+
+			server.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/apis/admissionregistration.k8s.io/v1beta1/mutatingwebhookconfigurations/virt-api-mutator"),
+					ghttp.RespondWithJSONEncoded(http.StatusOK, expectedMutatingWebhooks),
+				),
+			)
+
+			err := app.createMutatingWebhook()
 			Expect(err).To(HaveOccurred())
 			close(done)
 		}, 5)

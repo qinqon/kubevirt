@@ -28,8 +28,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/emicklei/go-restful"
-	"github.com/emicklei/go-restful-openapi"
+	restful "github.com/emicklei/go-restful"
+	restfulspec "github.com/emicklei/go-restful-openapi"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	flag "github.com/spf13/pflag"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
@@ -43,8 +43,8 @@ import (
 	apiregistrationv1beta1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1beta1"
 	aggregatorclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 
-	"kubevirt.io/kubevirt/pkg/api/v1"
-	"kubevirt.io/kubevirt/pkg/feature-gates"
+	v1 "kubevirt.io/kubevirt/pkg/api/v1"
+	featuregates "kubevirt.io/kubevirt/pkg/feature-gates"
 	"kubevirt.io/kubevirt/pkg/healthz"
 	"kubevirt.io/kubevirt/pkg/kubecli"
 	"kubevirt.io/kubevirt/pkg/log"
@@ -55,8 +55,8 @@ import (
 	"kubevirt.io/kubevirt/pkg/version"
 	"kubevirt.io/kubevirt/pkg/virt-api/rest"
 	"kubevirt.io/kubevirt/pkg/virt-api/webhooks"
-	"kubevirt.io/kubevirt/pkg/virt-api/webhooks/mutating-webhook"
-	"kubevirt.io/kubevirt/pkg/virt-api/webhooks/validating-webhook"
+	mutating_webhook "kubevirt.io/kubevirt/pkg/virt-api/webhooks/mutating-webhook"
+	validating_webhook "kubevirt.io/kubevirt/pkg/virt-api/webhooks/validating-webhook"
 )
 
 const (
@@ -694,23 +694,8 @@ func (app *virtAPIApp) createValidatingWebhook() error {
 	return nil
 }
 
-func (app *virtAPIApp) createMutatingWebhook() error {
-	namespace, err := util.GetNamespace()
-	if err != nil {
-		return err
-	}
-	registerWebhook := false
+func (app *virtAPIApp) mutatingWebhooks() []admissionregistrationv1beta1.Webhook {
 	vmiPath := vmiMutatePath
-
-	webhookRegistration, err := app.virtCli.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(virtWebhookMutator, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			registerWebhook = true
-		} else {
-			return err
-		}
-	}
-
 	webHooks := []admissionregistrationv1beta1.Webhook{
 		{
 			Name: "virtualmachineinstances-mutator.kubevirt.io",
@@ -726,7 +711,7 @@ func (app *virtAPIApp) createMutatingWebhook() error {
 			}},
 			ClientConfig: admissionregistrationv1beta1.WebhookClientConfig{
 				Service: &admissionregistrationv1beta1.ServiceReference{
-					Namespace: namespace,
+					Namespace: app.namespace,
 					Name:      virtApiServiceName,
 					Path:      &vmiPath,
 				},
@@ -734,6 +719,21 @@ func (app *virtAPIApp) createMutatingWebhook() error {
 			},
 		},
 	}
+	return webHooks
+}
+
+func (app *virtAPIApp) createMutatingWebhook() error {
+	registerWebhook := false
+
+	webhookRegistration, err := app.virtCli.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(virtWebhookMutator, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			registerWebhook = true
+		} else {
+			return err
+		}
+	}
+	webHooks := app.mutatingWebhooks()
 
 	if registerWebhook {
 		_, err := app.virtCli.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Create(&admissionregistrationv1beta1.MutatingWebhookConfiguration{
@@ -751,7 +751,7 @@ func (app *virtAPIApp) createMutatingWebhook() error {
 	} else {
 
 		for _, webhook := range webhookRegistration.Webhooks {
-			if webhook.ClientConfig.Service != nil && webhook.ClientConfig.Service.Namespace != namespace {
+			if webhook.ClientConfig.Service != nil && webhook.ClientConfig.Service.Namespace != app.namespace {
 				return fmt.Errorf("MutatingAdmissionWebhook [%s] is already registered using services endpoints in a different namespace. Existing webhook registration must be deleted before virt-api can proceed.", virtWebhookMutator)
 			}
 		}
