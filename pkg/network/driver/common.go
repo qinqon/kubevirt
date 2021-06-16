@@ -31,18 +31,14 @@ import (
 	lmf "github.com/subgraph/libmacouflage"
 	"github.com/vishvananda/netlink"
 
-	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/converter"
+	"kubevirt.io/kubevirt/pkg/network/dhcp"
 
 	"kubevirt.io/kubevirt/pkg/util/sysctl"
 
 	netutils "k8s.io/utils/net"
 
-	v1 "kubevirt.io/client-go/api/v1"
 	"kubevirt.io/client-go/log"
-	"kubevirt.io/kubevirt/pkg/network/cache"
 	"kubevirt.io/kubevirt/pkg/virt-handler/selinux"
-	dhcpv4 "kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/network/dhcp"
-	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/network/dhcpv6"
 )
 
 const (
@@ -52,6 +48,7 @@ const (
 )
 
 type NetworkHandler interface {
+	dhcp.Handler
 	LinkByName(name string) (netlink.Link, error)
 	AddrList(link netlink.Link, family int) ([]netlink.Addr, error)
 	ReadIPAddressesFromLink(interfaceName string) (string, string, error)
@@ -69,7 +66,6 @@ type NetworkHandler interface {
 	SetRandomMac(iface string) (net.HardwareAddr, error)
 	GetMacDetails(iface string) (net.HardwareAddr, error)
 	LinkSetMaster(link netlink.Link, master *netlink.Bridge) error
-	StartDHCP(nic *cache.DhcpConfig, bridgeInterfaceName string, dhcpOptions *v1.DHCPOptions, filterByMAC bool) error
 	HasNatIptables(proto iptables.Protocol) bool
 	IsIpv6Enabled(interfaceName string) (bool, error)
 	IsIpv4Primary() (bool, error)
@@ -86,7 +82,9 @@ type NetworkHandler interface {
 	DisableTXOffloadChecksum(ifaceName string) error
 }
 
-type NetworkUtilsHandler struct{}
+type NetworkUtilsHandler struct {
+	dhcp.HandlerImpl
+}
 
 func (h *NetworkUtilsHandler) LinkByName(name string) (netlink.Link, error) {
 	return netlink.LinkByName(name)
@@ -365,50 +363,6 @@ func (h *NetworkUtilsHandler) SetRandomMac(iface string) (net.HardwareAddr, erro
 	return currentMac, nil
 }
 
-func (h *NetworkUtilsHandler) StartDHCP(nic *cache.DhcpConfig, bridgeInterfaceName string, dhcpOptions *v1.DHCPOptions, filterByMAC bool) error {
-	log.Log.V(4).Infof("StartDHCP network Nic: %+v", nic)
-	nameservers, searchDomains, err := converter.GetResolvConfDetailsFromPod()
-	if err != nil {
-		return fmt.Errorf("Failed to get DNS servers from resolv.conf: %v", err)
-	}
-
-	// panic in case the DHCP server failed during the vm creation
-	// but ignore dhcp errors when the vm is destroyed or shutting down
-	go func() {
-		if err = DHCPServer(
-			nic.MAC,
-			filterByMAC,
-			nic.IP.IP,
-			nic.IP.Mask,
-			bridgeInterfaceName,
-			nic.AdvertisingIPAddr,
-			nic.Gateway,
-			nameservers,
-			nic.Routes,
-			searchDomains,
-			nic.Mtu,
-			dhcpOptions,
-		); err != nil {
-			log.Log.Errorf("failed to run DHCP: %v", err)
-			panic(err)
-		}
-	}()
-
-	if nic.IPv6.IPNet != nil {
-		go func() {
-			if err = DHCPv6Server(
-				nic.IPv6.IP,
-				bridgeInterfaceName,
-			); err != nil {
-				log.Log.Reason(err).Error("failed to run DHCPv6")
-				panic(err)
-			}
-		}()
-	}
-
-	return nil
-}
-
 func (h *NetworkUtilsHandler) CreateTapDevice(tapName string, queueNumber uint32, launcherPID int, mtu int, tapOwner string) error {
 	tapDeviceSELinuxCmdExecutor, err := buildTapDeviceMaker(tapName, queueNumber, launcherPID, mtu, tapOwner)
 	if err != nil {
@@ -460,16 +414,3 @@ func (h *NetworkUtilsHandler) BindTapDeviceToBridge(tapName string, bridgeName s
 	log.Log.Infof("Successfully configured tap device: %s", tapName)
 	return nil
 }
-
-func (h *NetworkUtilsHandler) DisableTXOffloadChecksum(ifaceName string) error {
-	if err := dhcpv4.EthtoolTXOff(ifaceName); err != nil {
-		log.Log.Reason(err).Errorf("Failed to set tx offload for interface %s off", ifaceName)
-		return err
-	}
-
-	return nil
-}
-
-// Allow mocking for tests
-var DHCPServer = dhcpv4.SingleClientDHCPServer
-var DHCPv6Server = dhcpv6.SingleClientDHCPv6Server
