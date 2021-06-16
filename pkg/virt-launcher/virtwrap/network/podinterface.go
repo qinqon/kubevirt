@@ -10,8 +10,7 @@
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See the License for the specific language governing permissions and * limitations under the License.
  *
  * Copyright 2018 Red Hat, Inc.
  *
@@ -34,6 +33,7 @@ import (
 	"kubevirt.io/client-go/precond"
 	"kubevirt.io/kubevirt/pkg/network"
 	"kubevirt.io/kubevirt/pkg/network/cache"
+	"kubevirt.io/kubevirt/pkg/network/dhcp"
 	dhcpconfigurator "kubevirt.io/kubevirt/pkg/network/dhcp"
 	netdriver "kubevirt.io/kubevirt/pkg/network/driver"
 	"kubevirt.io/kubevirt/pkg/network/errors"
@@ -64,7 +64,7 @@ type BindMechanism interface {
 	discoverPodNetworkInterface(podIfaceName string) error
 	preparePodNetworkInterface() error
 	generateDomainIfaceSpec() api.Interface
-	generateDhcpConfig() *cache.DhcpConfig
+	generateDhcpConfig() *dhcp.Configuration
 
 	// The following entry points require domain initialized for the
 	// binding and can be used in phase2 only.
@@ -208,16 +208,16 @@ func (l *podNIC) sortIPsBasedOnPrimaryIP(ipv4, ipv6 string) ([]string, error) {
 	return []string{ipv6, ipv4}, nil
 }
 
-func (l *podNIC) PlugPhase1() error {
+func (l *podNIC) PlugPhase1() (*network.InterfaceConfiguration, error) {
 
 	// There is nothing to plug for SR-IOV devices
 	if l.iface.SRIOV != nil {
-		return nil
+		return nil, nil
 	}
 
 	cachedDomainIface, err := l.cachedDomainInterface()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	doesExist := cachedDomainIface != nil
@@ -225,26 +225,24 @@ func (l *podNIC) PlugPhase1() error {
 	if !doesExist || l.iface.Slirp != nil {
 		err := l.setPodInterfaceCache()
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if !doesExist {
+		interfaceConfiguration := &network.InterfaceConfiguration{}
 		bindMechanism, err := l.getPhase1Binding()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := bindMechanism.discoverPodNetworkInterface(l.podInterfaceName); err != nil {
-			return err
+			return nil, err
 		}
 
 		if l.dhcpConfigurator != nil {
 			dhcpConfig := bindMechanism.generateDhcpConfig()
 			log.Log.V(4).Infof("The generated dhcpConfig: %s", dhcpConfig.String())
-			if err := l.dhcpConfigurator.ExportConfiguration(*dhcpConfig); err != nil {
-				log.Log.Reason(err).Error("failed to save dhcpConfig configuration")
-				return errors.CreateCriticalNetworkError(err)
-			}
+			interfaceConfiguration.DHCPConfiguration = dhcpConfig
 		}
 
 		domainIface := bindMechanism.generateDomainIfaceSpec()
@@ -253,7 +251,7 @@ func (l *podNIC) PlugPhase1() error {
 		// generator methods get their info from.
 		if err := bindMechanism.preparePodNetworkInterface(); err != nil {
 			log.Log.Reason(err).Error("failed to prepare pod networking")
-			return errors.CreateCriticalNetworkError(err)
+			return nil, errors.CreateCriticalNetworkError(err)
 		}
 
 		// caching the domain interface *must* be the last thing done in phase
@@ -261,12 +259,13 @@ func (l *podNIC) PlugPhase1() error {
 		// networking infrastructure.
 		if err := l.storeCachedDomainIface(domainIface); err != nil {
 			log.Log.Reason(err).Error("failed to save interface configuration")
-			return errors.CreateCriticalNetworkError(err)
+			return nil, errors.CreateCriticalNetworkError(err)
 		}
-
+		return interfaceConfiguration, nil
 	}
 
-	return nil
+	//TODO: Compose interfaceConfiguration
+	return nil, nil
 }
 
 func (l *podNIC) PlugPhase2(domain *api.Domain) error {
@@ -436,9 +435,9 @@ func (b *BridgeBindMechanism) discoverPodNetworkInterface(podIfaceName string) e
 	return nil
 }
 
-func (b *BridgeBindMechanism) generateDhcpConfig() *cache.DhcpConfig {
+func (b *BridgeBindMechanism) generateDhcpConfig() *dhcp.Configuration {
 	if !b.ipamEnabled {
-		return &cache.DhcpConfig{Name: b.podNicLink.Attrs().Name, IPAMDisabled: true}
+		return &dhcp.Configuration{Name: b.podNicLink.Attrs().Name, IPAMDisabled: true}
 	}
 	fakeBridgeIP, err := b.getFakeBridgeIP()
 	if err != nil {
@@ -448,7 +447,7 @@ func (b *BridgeBindMechanism) generateDhcpConfig() *cache.DhcpConfig {
 	if err != nil || fakeServerAddr == nil {
 		return nil
 	}
-	dhcpConfig := &cache.DhcpConfig{
+	dhcpConfig := &dhcp.Configuration{
 		MAC:               *b.mac,
 		Name:              b.podNicLink.Attrs().Name,
 		IPAMDisabled:      !b.ipamEnabled,
@@ -594,11 +593,11 @@ func (b *BridgeBindMechanism) learnInterfaceRoutes() error {
 	return nil
 }
 
-func (b *BridgeBindMechanism) decorateDhcpConfigRoutes(dhcpConfig *cache.DhcpConfig) {
+func (b *BridgeBindMechanism) decorateDhcpConfigRoutes(dhcpConfig *dhcp.Configuration) {
 	log.Log.V(4).Infof("the default route is: %s", b.routes[0].String())
 	dhcpConfig.Gateway = b.routes[0].Gw
 	if len(b.routes) > 1 {
-		dhcpRoutes := netdriver.FilterPodNetworkRoutes(b.routes, dhcpConfig)
+		dhcpRoutes := dhcp.FilterPodNetworkRoutes(b.routes, dhcpConfig)
 		dhcpConfig.Routes = &dhcpRoutes
 	}
 }
@@ -766,8 +765,8 @@ func (b *MasqueradeBindMechanism) configureIPv6Addresses() error {
 	return nil
 }
 
-func (b *MasqueradeBindMechanism) generateDhcpConfig() *cache.DhcpConfig {
-	dhcpConfig := &cache.DhcpConfig{
+func (b *MasqueradeBindMechanism) generateDhcpConfig() *dhcp.Configuration {
+	dhcpConfig := &dhcp.Configuration{
 		Name: b.podNicLink.Attrs().Name,
 		IP:   b.podIfaceIPv4Addr,
 		IPv6: b.podIfaceIPv6Addr,
@@ -1318,7 +1317,7 @@ func (b *SlirpBindMechanism) decorateConfig(api.Interface) error {
 	return nil
 }
 
-func (b *SlirpBindMechanism) generateDhcpConfig() *cache.DhcpConfig {
+func (b *SlirpBindMechanism) generateDhcpConfig() *dhcp.Configuration {
 	return nil
 }
 
@@ -1380,7 +1379,7 @@ func (b *MacvtapBindMechanism) decorateConfig(domainIface api.Interface) error {
 	return nil
 }
 
-func (b *MacvtapBindMechanism) generateDhcpConfig() *cache.DhcpConfig {
+func (b *MacvtapBindMechanism) generateDhcpConfig() *dhcp.Configuration {
 	return nil
 }
 

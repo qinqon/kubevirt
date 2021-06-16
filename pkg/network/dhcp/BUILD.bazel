@@ -2,13 +2,18 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
-    srcs = ["configurator.go"],
+    srcs = [
+        "configurator.go",
+        "types.go",
+    ],
     importpath = "kubevirt.io/kubevirt/pkg/network/dhcp",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/network/cache:go_default_library",
         "//pkg/network/driver:go_default_library",
         "//staging/src/kubevirt.io/client-go/api/v1:go_default_library",
+        "//staging/src/kubevirt.io/client-go/log:go_default_library",
+        "//vendor/github.com/vishvananda/netlink:go_default_library",
     ],
 )
 

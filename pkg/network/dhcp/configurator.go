@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/vishvananda/netlink"
+
 	v1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/log"
 	"kubevirt.io/kubevirt/pkg/network/cache"
 	netdriver "kubevirt.io/kubevirt/pkg/network/driver"
 )
@@ -82,4 +85,23 @@ func (d Configurator) EnsureDhcpServerStarted(podInterfaceName string, dhcpConfi
 
 func (d Configurator) getDhcpStartedFilePath(podInterfaceName string) string {
 	return fmt.Sprintf("%s/dhcp_started-%s", d.dhcpStartedDirectory, podInterfaceName)
+}
+
+// filter out irrelevant routes
+func FilterPodNetworkRoutes(routes []netlink.Route, nic *Configuration) (filteredRoutes []netlink.Route) {
+	for _, route := range routes {
+		log.Log.V(5).Infof("route: %s", route.String())
+		// don't create empty static routes
+		if route.Dst == nil && route.Src.Equal(nil) && route.Gw.Equal(nil) {
+			continue
+		}
+
+		// don't create static route for src == nic
+		if route.Src != nil && route.Src.Equal(nic.IP.IP) {
+			continue
+		}
+
+		filteredRoutes = append(filteredRoutes, route)
+	}
+	return
 }

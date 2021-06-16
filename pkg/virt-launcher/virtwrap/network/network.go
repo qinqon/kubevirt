@@ -23,6 +23,7 @@ import (
 	"fmt"
 
 	v1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/kubevirt/pkg/network"
 	"kubevirt.io/kubevirt/pkg/network/cache"
 	netdriver "kubevirt.io/kubevirt/pkg/network/driver"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
@@ -71,17 +72,23 @@ func (v VMNetworkConfigurator) getNICsWithLauncherPID(launcherPID *int) ([]podNI
 
 }
 
-func (n *VMNetworkConfigurator) SetupPodNetworkPhase1(pid int) error {
+func (n *VMNetworkConfigurator) SetupPodNetworkPhase1(pid int) (network.Configuration, error) {
 	nics, err := n.getNICsWithLauncherPID(&pid)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
+
+	networkConfiguration := network.Configuration{}
 	for _, nic := range nics {
-		if err := nic.PlugPhase1(); err != nil {
-			return fmt.Errorf("failed plugging phase1 at nic '%s': %w", nic.podInterfaceName, err)
+		interfaceConfiguration, err := nic.PlugPhase1()
+		if err != nil {
+			return nil, fmt.Errorf("failed plugging phase1 at nic '%s': %w", nic.podInterfaceName, err)
+		}
+		if interfaceConfiguration != nil {
+			networkConfiguration[nic.iface.Name] = *interfaceConfiguration
 		}
 	}
-	return nil
+	return networkConfiguration, nil
 }
 
 func (n *VMNetworkConfigurator) SetupPodNetworkPhase2(domain *api.Domain) error {
