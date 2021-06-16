@@ -268,8 +268,13 @@ func (l *podNIC) PlugPhase1() (*network.InterfaceConfiguration, error) {
 	return nil, nil
 }
 
-func (l *podNIC) PlugPhase2(domain *api.Domain) error {
+func (l *podNIC) PlugPhase2(networkConfiguration network.Configuration, domain *api.Domain) error {
 	precond.MustNotBeNil(domain)
+
+	interfaceConfiguration, ok := networkConfiguration[l.iface.Name]
+	if !ok {
+		log.Log.Criticalf("interface configuration not found for %s", l.iface.Name)
+	}
 
 	// There is nothing to plug for SR-IOV devices
 	if l.iface.SRIOV != nil {
@@ -294,11 +299,14 @@ func (l *podNIC) PlugPhase2(domain *api.Domain) error {
 	}
 
 	if l.dhcpConfigurator != nil {
-		dhcpConfig, err := l.dhcpConfigurator.ImportConfiguration(l.podInterfaceName)
-		if err != nil || dhcpConfig == nil {
-			log.Log.Reason(err).Critical("failed to load cached dhcpConfig configuration")
+		dhcpConfig := interfaceConfiguration.DHCPConfiguration
+		if dhcpConfig == nil {
+			log.Log.Reason(err).Critical("DHCP configuration not found")
 		}
-		log.Log.V(4).Infof("The imported dhcpConfig: %s", dhcpConfig.String())
+		dhcpConfig.AdvertisingIPAddr = dhcpConfig.AdvertisingIPAddr.To4()
+		dhcpConfig.Gateway = dhcpConfig.Gateway.To4()
+		dhcpConfig.AdvertisingIPv6Addr = dhcpConfig.AdvertisingIPv6Addr.To16()
+		log.Log.V(4).Infof("The received dhcpConfig: %s", dhcpConfig.String())
 		if err := l.dhcpConfigurator.EnsureDhcpServerStarted(l.podInterfaceName, *dhcpConfig, l.iface.DHCPOptions); err != nil {
 			log.Log.Reason(err).Criticalf("failed to ensure dhcp service running for: %s", l.podInterfaceName)
 			panic(err)

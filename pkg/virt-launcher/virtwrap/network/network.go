@@ -91,13 +91,13 @@ func (n *VMNetworkConfigurator) SetupPodNetworkPhase1(pid int) (network.Configur
 	return networkConfiguration, nil
 }
 
-func (n *VMNetworkConfigurator) SetupPodNetworkPhase2(domain *api.Domain) error {
+func (n *VMNetworkConfigurator) SetupPodNetworkPhase2(networkConfiguration network.Configuration, domain *api.Domain) error {
 	nics, err := n.getNICs()
 	if err != nil {
 		return nil
 	}
 	for _, nic := range nics {
-		if err := nic.PlugPhase2(domain); err != nil {
+		if err := nic.PlugPhase2(networkConfiguration, domain); err != nil {
 			return fmt.Errorf("failed plugging phase2 at nic '%s': %w", nic.podInterfaceName, err)
 		}
 	}

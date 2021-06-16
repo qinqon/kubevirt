@@ -71,7 +71,8 @@ func (l *LibvirtDomainManager) prepareMigrationTarget(vmi *v1.VirtualMachineInst
 		return fmt.Errorf("conversion failed: %v", err)
 	}
 
-	dom, err := l.preStartHook(vmi, domain)
+	//TODO: pass the network Configuration passed from Pase1
+	dom, err := l.preStartHook(vmi, nil, domain)
 	if err != nil {
 		return fmt.Errorf("pre-start pod-setup failed: %v", err)
 	}
