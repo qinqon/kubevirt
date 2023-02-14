@@ -2289,9 +2289,11 @@ func (d *VirtualMachineController) checkNetworkInterfacesForMigration(vmi *v1.Vi
 		return nil
 	}
 
-	if !netvmispec.IsPodNetworkWithMasqueradeBindingInterface(vmi.Spec.Networks, ifaces) {
-		return fmt.Errorf("cannot migrate VMI which does not use masquerade to connect to the pod network")
-	}
+	/*
+		if !netvmispec.IsPodNetworkWithMasqueradeBindingInterface(vmi.Spec.Networks, ifaces) {
+			return fmt.Errorf("cannot migrate VMI which does not use masquerade to connect to the pod network")
+		}
+	*/
 
 	return nil
 }
