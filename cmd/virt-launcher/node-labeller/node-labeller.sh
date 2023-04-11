@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -xe
 set -o pipefail
 
 # nodelabeller currently only support x86.
