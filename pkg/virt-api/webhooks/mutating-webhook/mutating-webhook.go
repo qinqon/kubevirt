@@ -20,8 +20,10 @@
 package mutating_webhook
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,11 +44,31 @@ type mutator interface {
 }
 
 func serve(resp http.ResponseWriter, req *http.Request, m mutator) {
+	log.Log.Infof("deleteme, serve, req.Context: %+v", req.Context())
+	log.Log.Infof("deleteme, serve, query: %+v", req.URL.Query())
+	timeoutRaw, ok := req.URL.Query()["timeout"]
+	if ok && len(timeoutRaw) > 0 {
+		timeout, err := time.ParseDuration(timeoutRaw[0])
+		if err != nil {
+			log.Log.Reason(err).Errorf("failed decoding timeout param")
+			resp.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		log.Log.Infof("deleteme, serve, timeout: %+v", timeout)
+		req = req.WithContext(ctx)
+	}
+	log.Log.Info("deleteme, serve, 1")
 	review, err := webhookutils.GetAdmissionReview(req)
 	if err != nil {
+		log.Log.Reason(err).Errorf("failed geting addmission review")
+		log.Log.Reason(err).Info("deleteme, serve, 2")
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	log.Log.Info("deleteme, serve, 3")
 
 	response := admissionv1.AdmissionReview{
 		TypeMeta: metav1.TypeMeta{
@@ -69,11 +91,13 @@ func serve(resp http.ResponseWriter, req *http.Request, m mutator) {
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	log.Log.Info("deleteme, serve, 4")
 	if _, err := resp.Write(responseBytes); err != nil {
 		log.Log.Reason(err).Errorf("failed to write webhook response")
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	log.Log.Info("deleteme, serve, 5")
 }
 
 func ServeVMs(resp http.ResponseWriter, req *http.Request, clusterConfig *virtconfig.ClusterConfig, virtCli kubecli.KubevirtClient) {

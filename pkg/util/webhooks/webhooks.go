@@ -21,21 +21,33 @@ import (
 
 // GetAdmissionReview
 func GetAdmissionReview(r *http.Request) (*admissionv1.AdmissionReview, error) {
+	log.Log.Info("deleteme, GetAdmissionReview, 1")
+	query := r.URL.Query()
+	log.Log.Infof("deleteme, GetAdmissionReview, query=%+v", query)
 	var body []byte
 	if r.Body != nil {
-		if data, err := io.ReadAll(r.Body); err == nil {
-			body = data
+		log.Log.Info("deleteme, GetAdmissionReview, before ReadAll")
+		data, err := io.ReadAll(r.Body)
+		log.Log.Info("deleteme, GetAdmissionReview, before AfterReadAll")
+		if err != nil {
+			log.Log.Reason(err).Info("deleteme, GetAdmissionReview, 2")
+			return nil, fmt.Errorf("failed reading request body at webhook: %w", err)
 		}
+		log.Log.Info("deleteme, GetAdmissionReview, 3")
+		body = data
 	}
+	log.Log.Info("deleteme, GetAdmissionReview, 4")
 
 	// verify the content type is accurate
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
 		return nil, fmt.Errorf("contentType=%s, expect application/json", contentType)
 	}
+	log.Log.Info("deleteme, GetAdmissionReview, 5")
 
 	ar := &admissionv1.AdmissionReview{}
 	err := json.Unmarshal(body, ar)
+	log.Log.Info("deleteme, GetAdmissionReview, 6")
 	return ar, err
 }
 

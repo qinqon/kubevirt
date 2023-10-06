@@ -107,6 +107,8 @@ func (mutator *VMsMutator) Mutate(ar *admissionv1.AdmissionReview) *admissionv1.
 		}
 	}
 
+	log.Log.Info("deleteme, vm, Mutate, 1")
+
 	if err = mutator.inferDefaultPreference(&vm); err != nil {
 		log.Log.Reason(err).Error("admission failed, unable to set default preference")
 		return &admissionv1.AdmissionResponse{
@@ -116,6 +118,8 @@ func (mutator *VMsMutator) Mutate(ar *admissionv1.AdmissionReview) *admissionv1.
 			},
 		}
 	}
+
+	log.Log.Info("deleteme, vm, Mutate, 2")
 
 	mutator.setDefaultInstancetypeKind(&vm)
 	mutator.setDefaultPreferenceKind(&vm)
@@ -146,6 +150,8 @@ func (mutator *VMsMutator) Mutate(ar *admissionv1.AdmissionReview) *admissionv1.
 			},
 		}
 	}
+
+	log.Log.Info("deleteme, vm, Mutate, 3")
 
 	jsonPatchType := admissionv1.PatchTypeJSONPatch
 	return &admissionv1.AdmissionResponse{
