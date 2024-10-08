@@ -90,6 +90,12 @@ func (c *NetStat) UpdateStatus(vmi *v1.VirtualMachineInstance, domain *api.Domai
 		return nil
 	}
 
+	var err error
+	podIfacesNamesByNetworkNames, err := netvmispec.IndexPodIfacesNamesByNetworkName(vmi.Spec.Networks, vmi.Status.Interfaces)
+	if err != nil {
+		return err
+	}
+
 	multusStatusNetworksByName := netvmispec.IndexInterfaceStatusByName(
 		vmi.Status.Interfaces,
 		func(ifaceStatus v1.VirtualMachineInstanceNetworkInterface) bool {
@@ -103,7 +109,6 @@ func (c *NetStat) UpdateStatus(vmi *v1.VirtualMachineInstance, domain *api.Domai
 		sriovIfacesStatusFromDomainHostDevices(domain.Spec.Devices.HostDevices, vmiInterfacesSpecByName)...,
 	)
 
-	var err error
 	interfacesStatus, err = c.updateIfacesStatusFromPodCache(interfacesStatus, vmi.Spec.Domain.Devices.Interfaces, vmi)
 	if err != nil {
 		return err
@@ -119,11 +124,35 @@ func (c *NetStat) UpdateStatus(vmi *v1.VirtualMachineInstance, domain *api.Domai
 
 	interfacesStatus = ifacesStatusFromMultus(interfacesStatus, multusStatusNetworksByName, vmiInterfacesSpecByName)
 
+	interfacesStatus = append(interfacesStatus, reportMissingNetworks(vmi.Spec.Networks, interfacesStatus)...)
+
+	reportPodIfaceNames(interfacesStatus, podIfacesNamesByNetworkNames)
+
 	vmi.Status.Interfaces = interfacesStatus
 
 	c.removeAbsentIfacesFromVolatileCache(vmi)
 
 	return nil
+}
+
+func reportMissingNetworks(networks []v1.Network, interfacesStatus []v1.VirtualMachineInstanceNetworkInterface) []v1.VirtualMachineInstanceNetworkInterface {
+	var missing []v1.VirtualMachineInstanceNetworkInterface
+
+	for _, network := range networks {
+		if is := netvmispec.LookupInterfaceStatusByName(interfacesStatus, network.Name); is != nil {
+			continue
+		}
+
+		missing = append(missing, v1.VirtualMachineInstanceNetworkInterface{Name: network.Name})
+	}
+
+	return missing
+}
+
+func reportPodIfaceNames(interfacesStatus []v1.VirtualMachineInstanceNetworkInterface, podIfacesNamesByNetworkNames map[string]string) {
+	for i, is := range interfacesStatus {
+		interfacesStatus[i].PodInterfaceName = podIfacesNamesByNetworkNames[is.Name]
+	}
 }
 
 func ifacesStatusFromMultus(
