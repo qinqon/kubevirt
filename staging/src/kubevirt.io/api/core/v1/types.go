@@ -1284,6 +1284,19 @@ const (
 	// Migration will stay in Pending state while utility volumes exist, and will fail if they are not removed before timeout
 	MigrationUtilityVolumesTimeoutSecondsAnnotation string = "kubevirt.io/migrationUtilityVolumesTimeoutSeconds"
 
+	// MigrationDowntimeAnnotation overrides, for this VMI, the target maximum
+	// amount of time the guest is paused during the live migration switchover,
+	// in milliseconds. It overrides the cluster wide
+	// MigrationConfiguration.Downtime value.
+	// This exists for experimentation (PoC).
+	MigrationDowntimeAnnotation string = "kubevirt.io/migrationDowntime"
+
+	// MigrationDowntimeStepsAnnotation overrides, for this VMI, the number of
+	// incremental steps used to reach the migration downtime value. It
+	// overrides the cluster wide MigrationConfiguration.DowntimeSteps value.
+	// This exists for experimentation (PoC).
+	MigrationDowntimeStepsAnnotation string = "kubevirt.io/migrationDowntimeSteps"
+
 	// CustomLibvirtLogFiltersAnnotation can be used to customized libvirt log filters. Example value could be
 	// "3:remote 4:event 3:util.json 3:util.object 3:util.dbus 3:util.netlink 3:node_device 3:rpc 3:access 1:*".
 	// For more info: https://libvirt.org/kbase/debuglogs.html
@@ -3356,6 +3369,23 @@ type MigrationConfiguration struct {
 	// permitted, migration will be switched to post-copy or the VMI will be
 	// paused to allow the migration to complete
 	AllowWorkloadDisruption *bool `json:"allowWorkloadDisruption,omitempty"`
+	// Downtime is the target maximum amount of time the guest is paused
+	// during the live migration switchover, in milliseconds. It is applied
+	// to the hypervisor as the migration max downtime parameter. Lowering it
+	// reduces the observed VM (and network) downtime during migrations, at
+	// the cost of migrations taking longer (or never converging) for busy
+	// guests. When unset, the hypervisor default is used (QEMU defaults to
+	// 300ms). Inspired by OpenStack Nova's live_migration_downtime.
+	Downtime *uint32 `json:"downtime,omitempty"`
+	// DowntimeSteps is the number of incremental steps used to reach the
+	// Downtime value: the migration starts with a max downtime of
+	// Downtime/DowntimeSteps milliseconds and increases it linearly up to
+	// Downtime, waiting 75 seconds per GiB of VM memory between increases.
+	// This lets idle guests migrate with the smallest possible pause while
+	// still allowing busy guests to converge eventually. Only meaningful
+	// together with Downtime. Defaults to 1 (Downtime applied immediately).
+	// Inspired by OpenStack Nova's live_migration_downtime_steps.
+	DowntimeSteps *uint32 `json:"downtimeSteps,omitempty"`
 	// When set to true, DisableTLS will disable the additional layer of live migration encryption
 	// provided by KubeVirt. This is usually a bad idea. Defaults to false
 	DisableTLS *bool `json:"disableTLS,omitempty"`

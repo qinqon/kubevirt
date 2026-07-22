@@ -1385,6 +1385,29 @@ var CRDsValidation map[string]string = map[string]string{
                     When set to true, DisableTLS will disable the additional layer of live migration encryption
                     provided by KubeVirt. This is usually a bad idea. Defaults to false
                   type: boolean
+                downtime:
+                  description: |-
+                    Downtime is the target maximum amount of time the guest is paused
+                    during the live migration switchover, in milliseconds. It is applied
+                    to the hypervisor as the migration max downtime parameter. Lowering it
+                    reduces the observed VM (and network) downtime during migrations, at
+                    the cost of migrations taking longer (or never converging) for busy
+                    guests. When unset, the hypervisor default is used (QEMU defaults to
+                    300ms). Inspired by OpenStack Nova's live_migration_downtime.
+                  format: int32
+                  type: integer
+                downtimeSteps:
+                  description: |-
+                    DowntimeSteps is the number of incremental steps used to reach the
+                    Downtime value: the migration starts with a max downtime of
+                    Downtime/DowntimeSteps milliseconds and increases it linearly up to
+                    Downtime, waiting 75 seconds per GiB of VM memory between increases.
+                    This lets idle guests migrate with the smallest possible pause while
+                    still allowing busy guests to converge eventually. Only meaningful
+                    together with Downtime. Defaults to 1 (Downtime applied immediately).
+                    Inspired by OpenStack Nova's live_migration_downtime_steps.
+                  format: int32
+                  type: integer
                 matchSELinuxLevelOnMigration:
                   description: |-
                     By default, the SELinux level of target virt-launcher pods is forced to the level of the source virt-launcher.
@@ -15014,6 +15037,29 @@ var CRDsValidation map[string]string = map[string]string{
                     When set to true, DisableTLS will disable the additional layer of live migration encryption
                     provided by KubeVirt. This is usually a bad idea. Defaults to false
                   type: boolean
+                downtime:
+                  description: |-
+                    Downtime is the target maximum amount of time the guest is paused
+                    during the live migration switchover, in milliseconds. It is applied
+                    to the hypervisor as the migration max downtime parameter. Lowering it
+                    reduces the observed VM (and network) downtime during migrations, at
+                    the cost of migrations taking longer (or never converging) for busy
+                    guests. When unset, the hypervisor default is used (QEMU defaults to
+                    300ms). Inspired by OpenStack Nova's live_migration_downtime.
+                  format: int32
+                  type: integer
+                downtimeSteps:
+                  description: |-
+                    DowntimeSteps is the number of incremental steps used to reach the
+                    Downtime value: the migration starts with a max downtime of
+                    Downtime/DowntimeSteps milliseconds and increases it linearly up to
+                    Downtime, waiting 75 seconds per GiB of VM memory between increases.
+                    This lets idle guests migrate with the smallest possible pause while
+                    still allowing busy guests to converge eventually. Only meaningful
+                    together with Downtime. Defaults to 1 (Downtime applied immediately).
+                    Inspired by OpenStack Nova's live_migration_downtime_steps.
+                  format: int32
+                  type: integer
                 matchSELinuxLevelOnMigration:
                   description: |-
                     By default, the SELinux level of target virt-launcher pods is forced to the level of the source virt-launcher.
@@ -15617,6 +15663,29 @@ var CRDsValidation map[string]string = map[string]string{
                     When set to true, DisableTLS will disable the additional layer of live migration encryption
                     provided by KubeVirt. This is usually a bad idea. Defaults to false
                   type: boolean
+                downtime:
+                  description: |-
+                    Downtime is the target maximum amount of time the guest is paused
+                    during the live migration switchover, in milliseconds. It is applied
+                    to the hypervisor as the migration max downtime parameter. Lowering it
+                    reduces the observed VM (and network) downtime during migrations, at
+                    the cost of migrations taking longer (or never converging) for busy
+                    guests. When unset, the hypervisor default is used (QEMU defaults to
+                    300ms). Inspired by OpenStack Nova's live_migration_downtime.
+                  format: int32
+                  type: integer
+                downtimeSteps:
+                  description: |-
+                    DowntimeSteps is the number of incremental steps used to reach the
+                    Downtime value: the migration starts with a max downtime of
+                    Downtime/DowntimeSteps milliseconds and increases it linearly up to
+                    Downtime, waiting 75 seconds per GiB of VM memory between increases.
+                    This lets idle guests migrate with the smallest possible pause while
+                    still allowing busy guests to converge eventually. Only meaningful
+                    together with Downtime. Defaults to 1 (Downtime applied immediately).
+                    Inspired by OpenStack Nova's live_migration_downtime_steps.
+                  format: int32
+                  type: integer
                 matchSELinuxLevelOnMigration:
                   description: |-
                     By default, the SELinux level of target virt-launcher pods is forced to the level of the source virt-launcher.

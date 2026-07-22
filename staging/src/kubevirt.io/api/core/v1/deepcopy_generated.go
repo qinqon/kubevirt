@@ -3493,6 +3493,16 @@ func (in *MigrationConfiguration) DeepCopyInto(out *MigrationConfiguration) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.Downtime != nil {
+		in, out := &in.Downtime, &out.Downtime
+		*out = new(uint32)
+		**out = **in
+	}
+	if in.DowntimeSteps != nil {
+		in, out := &in.DowntimeSteps, &out.DowntimeSteps
+		*out = new(uint32)
+		**out = **in
+	}
 	if in.DisableTLS != nil {
 		in, out := &in.DisableTLS, &out.DisableTLS
 		*out = new(bool)
