@@ -75,6 +75,13 @@ type MigrationOptions struct {
 	AllowPostCopy            bool
 	ParallelMigrationThreads *uint
 	AllowWorkloadDisruption  bool
+	// Downtime is the target maximum guest pause during the migration
+	// switchover in milliseconds. 0 means hypervisor default.
+	Downtime uint32
+	// DowntimeSteps is the number of incremental steps used to reach
+	// Downtime, starting at Downtime/DowntimeSteps. 0 or 1 means Downtime is
+	// applied immediately.
+	DowntimeSteps uint32
 }
 
 type LauncherClient interface {

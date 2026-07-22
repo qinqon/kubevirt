@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	k8sv1 "k8s.io/api/core/v1"
@@ -530,6 +531,14 @@ func (c *MigrationSourceController) migrateVMI(vmi *v1.VirtualMachineInstance, d
 		AllowWorkloadDisruption: *migrationConfiguration.AllowWorkloadDisruption,
 	}
 
+	if migrationConfiguration.Downtime != nil {
+		options.Downtime = *migrationConfiguration.Downtime
+	}
+	if migrationConfiguration.DowntimeSteps != nil {
+		options.DowntimeSteps = *migrationConfiguration.DowntimeSteps
+	}
+	applyMigrationDowntimeAnnotationOverrides(vmi, options)
+
 	configureParallelMigrationThreads(options, vmi)
 
 	marshalledOptions, err := json.Marshal(options)
@@ -643,4 +652,30 @@ func configureParallelMigrationThreads(options *cmdclient.MigrationOptions, vm *
 	}
 
 	options.ParallelMigrationThreads = pointer.P(parallelMultifdMigrationThreads)
+}
+
+// applyMigrationDowntimeAnnotationOverrides overrides the migration downtime
+// options with per VMI annotation values, when present. This exists for
+// experimentation (PoC): it allows tuning the switchover downtime of a single
+// VMI without touching the cluster wide MigrationConfiguration.
+func applyMigrationDowntimeAnnotationOverrides(vmi *v1.VirtualMachineInstance, options *cmdclient.MigrationOptions) {
+	parse := func(annotation string) (uint32, bool) {
+		raw, exists := vmi.Annotations[annotation]
+		if !exists {
+			return 0, false
+		}
+		value, err := strconv.ParseUint(raw, 10, 32)
+		if err != nil {
+			log.Log.Object(vmi).Reason(err).Warningf("ignoring malformed %s annotation value %q", annotation, raw)
+			return 0, false
+		}
+		return uint32(value), true
+	}
+
+	if downtime, exists := parse(v1.MigrationDowntimeAnnotation); exists {
+		options.Downtime = downtime
+	}
+	if steps, exists := parse(v1.MigrationDowntimeStepsAnnotation); exists {
+		options.DowntimeSteps = steps
+	}
 }
