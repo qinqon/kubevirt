@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "discover.go",
         "discoverbridge.go",
+        "ipamless.go",
         "netpod.go",
         "state.go",
     ],
@@ -12,6 +13,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/network/cache:go_default_library",
+        "//pkg/network/driver/netlink:go_default_library",
         "//pkg/network/driver/nmstate:go_default_library",
         "//pkg/network/driver/procsys:go_default_library",
         "//pkg/network/errors:go_default_library",
@@ -33,6 +35,8 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = [
+        "ipamless_integration_test.go",
+        "ipamless_test.go",
         "netpod_suite_test.go",
         "netpod_test.go",
         "state_test.go",
@@ -53,5 +57,7 @@ go_test(
         "//vendor/github.com/onsi/ginkgo/v2:go_default_library",
         "//vendor/github.com/onsi/gomega:go_default_library",
         "//vendor/github.com/vishvananda/netlink:go_default_library",
+        "//vendor/github.com/vishvananda/netns:go_default_library",
+        "//vendor/golang.org/x/sys/unix:go_default_library",
     ],
 )

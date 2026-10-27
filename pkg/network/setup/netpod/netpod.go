@@ -30,6 +30,7 @@ import (
 	"kubevirt.io/kubevirt/pkg/pointer"
 
 	"kubevirt.io/kubevirt/pkg/network/cache"
+	"kubevirt.io/kubevirt/pkg/network/driver/netlink"
 	"kubevirt.io/kubevirt/pkg/network/driver/nmstate"
 	"kubevirt.io/kubevirt/pkg/network/driver/procsys"
 	neterrors "kubevirt.io/kubevirt/pkg/network/errors"
@@ -55,6 +56,10 @@ type masqueradeAdapter interface {
 	Setup(bridgeIfaceSpec, podIfaceSpec *nmstate.Interface, vmiIface v1.Interface) error
 }
 
+type bridgeAdapter interface {
+	BridgeConnect(podIfaceName, bridgeName, tapName string, guestMAC net.HardwareAddr) error
+}
+
 type cacheCreator interface {
 	New(filePath string) *cache.Cache
 }
@@ -74,6 +79,7 @@ type NetPod struct {
 
 	nmstateAdapter    nmstateAdapter
 	masqueradeAdapter masqueradeAdapter
+	bridgeAdapter     bridgeAdapter
 
 	cacheCreator cacheCreator
 	state        *State
@@ -96,6 +102,7 @@ func NewNetPod(vmiNetworks []v1.Network, vmiIfaces []v1.Interface, vmiUID string
 
 		nmstateAdapter:    nmstate.New(),
 		masqueradeAdapter: masquerade.New(),
+		bridgeAdapter:     netlink.NetLink{},
 
 		cacheCreator:         cache.CacheCreator{},
 		bindingPluginsByName: map[string]v1.InterfaceBindingPlugin{},
@@ -120,6 +127,12 @@ func WithNMStateAdapter(h nmstateAdapter) option {
 func WithMasqueradeAdapter(h masqueradeAdapter) option {
 	return func(n *NetPod) {
 		n.masqueradeAdapter = h
+	}
+}
+
+func WithBridgeAdapter(h bridgeAdapter) option {
+	return func(n *NetPod) {
+		n.bridgeAdapter = h
 	}
 }
 
@@ -249,7 +262,13 @@ func (n NetPod) config(currentStatus *nmstate.Status) error {
 
 	// Configuring NAT (nftables) is temporary done outside nmstate.
 	// This should be eventually embedded into the nmstate desired state and applied by it.
-	return n.setupNAT(desiredSpec, currentStatus)
+	if err := n.setupNAT(desiredSpec, currentStatus); err != nil {
+		return err
+	}
+	// Install forwarding entries after all device/MAC configuration. Adding a
+	// bridge port can otherwise replace the guest's forwarding entry with a
+	// local entry for the unchanged CNI NIC MAC.
+	return n.setupIPAMlessManagedTap(currentStatus)
 }
 
 func (n NetPod) composeDesiredSpec(currentStatus *nmstate.Status) (*nmstate.Spec, error) {
@@ -473,6 +492,9 @@ func (n NetPod) managedTapSpec(podIfaceName string, vmiIfaceIndex int, ifaceStat
 
 	vmiNetworkName := n.vmiSpecIfaces[vmiIfaceIndex].Name
 	vmiNetwork := vmispec.LookupNetworkByName(n.vmiSpecNets, vmiNetworkName)
+	if isIPAMlessManagedTap(*vmiNetwork, podIfaceName, ifaceStatusByName) {
+		return n.ipamlessManagedTapSpec(podIfaceName, vmiIfaceIndex, ifaceStatusByName[podIfaceName])
+	}
 
 	podIfaceAlternativeName := link.GenerateNewBridgedVmiInterfaceName(podIfaceName)
 	podStatusIface, exist := ifaceStatusByName[podIfaceAlternativeName]
